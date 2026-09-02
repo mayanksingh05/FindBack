@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: findback_db
+    environment:
+      POSTGRES_USER: findback_user
+      POSTGRES_PASSWORD: findback_pass
+      POSTGRES_DB: findback_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U findback_user -d findback_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

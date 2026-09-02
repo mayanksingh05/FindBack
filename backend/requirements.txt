@@ -1,0 +1,38 @@
+# FindBack Backend Dependencies
+# NOTE: Exact versions will be pinned after tech stack decisions
+
+# Core
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic[email]
+pydantic-settings
+
+# Database
+sqlalchemy
+psycopg2-binary
+alembic
+pgvector
+
+# Authentication
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+# AI / ML
+langchain
+langchain-community
+sentence-transformers
+open_clip_torch
+torch
+torchvision
+Pillow
+
+# LLM Providers (uncomment as needed)
+# langchain-google-genai
+# langchain-groq
+# langchain-ollama
+
+# Utilities
+httpx
+aiofiles
