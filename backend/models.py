@@ -28,7 +28,7 @@ class User(Base):
 
     # Relationships
     lost_reports = relationship("LostReport", back_populates="user")
-    found_reports = relationship("FoundReport", back_populates="user", foreign_keys="[FoundReport.user_id]")
+    found_reports = relationship("FoundReport", back_populates="submitted_by_user", foreign_keys="[FoundReport.submitted_by]")
 
 
 class LostReport(Base):
@@ -47,6 +47,7 @@ class LostReport(Base):
     image_path = Column(String(500), nullable=True)
     distinguishing_info = Column(Text, nullable=True)
     
+    # Status: ACTIVE | MATCHED | RESOLVED
     status = Column(String(30), default="ACTIVE")
     
     text_embedding = Column(Vector(384))
@@ -61,11 +62,19 @@ class LostReport(Base):
 
 
 class FoundReport(Base):
+    """
+    Found Item workflow:
+    1. Any student/admin submits a found item report (status = PENDING_APPROVAL)
+    2. Admin reviews and approves once item is physically received at desk (status = AT_SECURITY_DESK)
+    3. When matched and returned to owner (status = RETURNED_TO_OWNER)
+    """
     __tablename__ = "found_reports"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
     report_number = Column(String(20), unique=True, nullable=False)
-    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
+    
+    # Who submitted the found report (can be student or admin)
+    submitted_by = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
     
     category = Column(String(50))
     item_name = Column(String(100))
@@ -74,10 +83,12 @@ class FoundReport(Base):
     date_found = Column(Date)
     image_path = Column(String(500), nullable=True)
     
-    status = Column(String(30), default="PENDING_RECEIPT")
+    # Status: PENDING_APPROVAL | AT_SECURITY_DESK | RETURNED_TO_OWNER
+    status = Column(String(30), default="PENDING_APPROVAL")
     
-    received_by = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
-    received_at = Column(DateTime, nullable=True)
+    # Admin who approved the found report
+    approved_by = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
     
     text_embedding = Column(Vector(384))
     image_embedding = Column(Vector(512))
@@ -86,8 +97,8 @@ class FoundReport(Base):
     updated_at = Column(DateTime, default=get_utc_now, onupdate=get_utc_now)
 
     # Relationships
-    user = relationship("User", back_populates="found_reports", foreign_keys=[user_id])
-    receiver = relationship("User", foreign_keys=[received_by])
+    submitted_by_user = relationship("User", back_populates="found_reports", foreign_keys=[submitted_by])
+    approver = relationship("User", foreign_keys=[approved_by])
     matches = relationship("Match", back_populates="found_report")
 
 
@@ -104,6 +115,7 @@ class Match(Base):
     combined_score = Column(Float)
     
     explanation = Column(Text, nullable=True)
+    # Status: PENDING (student hasn't claimed yet) | CLAIM_PENDING | VERIFIED | REJECTED
     status = Column(String(30), default="PENDING")
     
     created_at = Column(DateTime, default=get_utc_now)
@@ -115,6 +127,10 @@ class Match(Base):
 
 
 class Claim(Base):
+    """
+    Student submits a claim on a match -> Admin sees it in Verification Queue.
+    Admin clicks Verified / Not Verified.
+    """
     __tablename__ = "claims"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
@@ -122,10 +138,10 @@ class Claim(Base):
     student_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
     found_report_id = Column(UUID(as_uuid=False), ForeignKey("found_reports.id"), nullable=False)
     
+    # Status: PENDING_VERIFICATION | VERIFIED | FAILED
     status = Column(String(30), default="PENDING_VERIFICATION")
     
     admin_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
-    admin_notes = Column(Text, nullable=True)
     resolved_at = Column(DateTime, nullable=True)
     
     created_at = Column(DateTime, default=get_utc_now)

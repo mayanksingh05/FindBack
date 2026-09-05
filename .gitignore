@@ -91,3 +91,4 @@ htmlcov/
 *.bak
 *.tmp
 *.temp
+implementation_plan*.md
