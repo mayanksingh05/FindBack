@@ -50,6 +50,7 @@ export const reportService = {
 export const matchService = {
   getMatches: async () => (await api.get('/matches')).data,
   getMatchDetail: async (id) => (await api.get(`/matches/${id}`)).data,
+  findMatches: async (lostReportId) => (await api.post(`/matches/find-matches/${lostReportId}`)).data,
   submitClaim: async (matchId) => (await api.post(`/matches/${matchId}/claim`, {})).data,
   getClaims: async () => (await api.get('/matches/claims/all')).data,
   updateClaimStatus: async (claimId, status) =>

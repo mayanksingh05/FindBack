@@ -13,6 +13,7 @@ export default function StudentDashboard({ onOpenReport }) {
   const [claims, setClaims] = useState([]);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [scanningReportId, setScanningReportId] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -31,6 +32,23 @@ export default function StudentDashboard({ onOpenReport }) {
       setClaims(c);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
+  };
+
+  const handleScanMatches = async (reportId) => {
+    setScanningReportId(reportId);
+    try {
+      const results = await matchService.findMatches(reportId);
+      await loadData();
+      if (results && results.length > 0) {
+        setActiveTab('matches');
+      } else {
+        alert("Scan completed! No matching items found at the Security Desk yet. We'll automatically notify you as soon as someone turns in a matching item.");
+      }
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Scan failed. Please try again.');
+    } finally {
+      setScanningReportId(null);
+    }
   };
 
   const tabs = [
@@ -142,9 +160,9 @@ export default function StudentDashboard({ onOpenReport }) {
           {activeTab === 'lost' && (
             <div className="card" style={{ overflow: 'hidden' }}>
               <table className="data-table">
-                <thead><tr><th>Report #</th><th>Item</th><th>Category</th><th>Location</th><th>Date</th><th>Status</th></tr></thead>
+                <thead><tr><th>Report #</th><th>Item</th><th>Category</th><th>Location</th><th>Date</th><th>Status</th><th>AI Actions</th></tr></thead>
                 <tbody>
-                  {lostReports.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No lost items reported yet.</td></tr> :
+                  {lostReports.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No lost items reported yet.</td></tr> :
                     lostReports.map((r) => (
                       <tr key={r.id}>
                         <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{r.report_number}</td>
@@ -153,6 +171,21 @@ export default function StudentDashboard({ onOpenReport }) {
                         <td>{r.location || (r.location_unknown ? 'Unknown' : '-')}</td>
                         <td>{r.date_lost || '-'}</td>
                         <td>{statusBadge(r.status)}</td>
+                        <td>
+                          {r.status === 'ACTIVE' ? (
+                            <button
+                              onClick={() => handleScanMatches(r.id)}
+                              disabled={scanningReportId === r.id}
+                              className="btn btn-sm btn-outline"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', padding: '0.35rem 0.65rem' }}
+                            >
+                              <Sparkles size={13} color="var(--accent)" />
+                              {scanningReportId === r.id ? 'Scanning...' : 'Find AI Matches'}
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>Resolved</span>
+                          )}
+                        </td>
                       </tr>
                     ))
                   }

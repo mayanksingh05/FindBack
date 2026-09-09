@@ -1,7 +1,8 @@
-"""Reports API: Lost and Found reports management."""
+"""Reports API: Lost and Found reports management with automated AI embedding generation and matching triggers."""
 import os
 import uuid
 import random
+import logging
 from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
@@ -12,6 +13,10 @@ from backend.database import get_db
 from backend.models import User, LostReport, FoundReport, Notification
 from backend.schemas import LostReportCreate, LostReportResponse, FoundReportCreate, FoundReportResponse
 from backend.auth import get_current_user, get_current_admin
+from backend.embeddings import embedding_service
+from backend.matching import run_matching_for_lost_report, run_matching_for_found_report
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -62,6 +67,20 @@ def create_lost_report(
     while db.query(LostReport).filter(LostReport.report_number == report_no).first():
         report_no = generate_report_no("LST")
 
+    # Generate AI vector embeddings
+    text_prompt = embedding_service.build_item_text(
+        item_name=report_in.item_name,
+        category=report_in.category,
+        description=report_in.description,
+        distinguishing_info=report_in.distinguishing_info,
+        location=report_in.location,
+    )
+    text_vec = embedding_service.generate_text_embedding(text_prompt)
+
+    img_vec = None
+    if report_in.image_path:
+        img_vec = embedding_service.generate_image_embedding(report_in.image_path)
+
     lost_report = LostReport(
         report_number=report_no,
         user_id=current_user.id,
@@ -73,11 +92,20 @@ def create_lost_report(
         date_lost=report_in.date_lost,
         distinguishing_info=report_in.distinguishing_info,
         image_path=report_in.image_path,
+        text_embedding=text_vec,
+        image_embedding=img_vec,
         status="ACTIVE",
     )
     db.add(lost_report)
     db.commit()
     db.refresh(lost_report)
+
+    # Automatically trigger matching against items currently at security desk
+    try:
+        run_matching_for_lost_report(lost_report.id, db)
+    except Exception as e:
+        logger.error(f"Error running automatic matching for lost report {lost_report.id}: {e}")
+
     return lost_report
 
 
@@ -87,6 +115,7 @@ def create_lost_report(
 def list_found_reports(
     mine: bool = False,
     catalog: bool = False,
+    category: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -104,6 +133,9 @@ def list_found_reports(
     else:
         # Student default: only approved items
         query = query.filter(FoundReport.status == "AT_SECURITY_DESK")
+
+    if category:
+        query = query.filter(FoundReport.category == category)
 
     results = query.order_by(FoundReport.created_at.desc()).all()
 
@@ -129,8 +161,21 @@ def create_found_report(
     while db.query(FoundReport).filter(FoundReport.report_number == report_no).first():
         report_no = generate_report_no("FND")
 
-    # If admin submits, auto-approve. If student submits, needs admin approval.
+    # If admin submits, auto-approve to AT_SECURITY_DESK. If student submits, needs admin approval.
     initial_status = "AT_SECURITY_DESK" if current_user.role == "admin" else "PENDING_APPROVAL"
+
+    # Generate AI vector embeddings
+    text_prompt = embedding_service.build_item_text(
+        item_name=report_in.item_name,
+        category=report_in.category,
+        description=report_in.description,
+        location=report_in.location_found,
+    )
+    text_vec = embedding_service.generate_text_embedding(text_prompt)
+
+    img_vec = None
+    if report_in.image_path:
+        img_vec = embedding_service.generate_image_embedding(report_in.image_path)
 
     found_report = FoundReport(
         report_number=report_no,
@@ -141,6 +186,8 @@ def create_found_report(
         location_found=report_in.location_found,
         date_found=report_in.date_found,
         image_path=report_in.image_path,
+        text_embedding=text_vec,
+        image_embedding=img_vec,
         status=initial_status,
         approved_by=current_user.id if current_user.role == "admin" else None,
         approved_at=datetime.now(timezone.utc) if current_user.role == "admin" else None,
@@ -161,6 +208,13 @@ def create_found_report(
 
     db.commit()
     db.refresh(found_report)
+
+    # If item is already at security desk (e.g. logged directly by admin), trigger matching against active lost reports
+    if initial_status == "AT_SECURITY_DESK":
+        try:
+            run_matching_for_found_report(found_report.id, db)
+        except Exception as e:
+            logger.error(f"Error running automatic matching for found report {found_report.id}: {e}")
 
     data = FoundReportResponse.model_validate(found_report)
     data.submitted_by_name = current_user.name
@@ -197,6 +251,12 @@ def approve_found_report(
 
     db.commit()
     db.refresh(report)
+
+    # Trigger AI matching against all waiting lost reports now that the item is at the desk
+    try:
+        run_matching_for_found_report(report.id, db)
+    except Exception as e:
+        logger.error(f"Error running matching on approved found report {report.id}: {e}")
 
     data = FoundReportResponse.model_validate(report)
     submitter = db.query(User).filter(User.id == report.submitted_by).first()

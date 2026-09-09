@@ -192,44 +192,29 @@ def seed_database():
         db.refresh(found1)
         db.refresh(found2)
 
-        # ── 4. Matches ────────────────────────────────
-        match1 = db.query(Match).filter(
-            Match.lost_report_id == lost1.id, Match.found_report_id == found1.id
-        ).first()
-        if not match1:
-            match1 = Match(
-                lost_report_id=lost1.id,
-                found_report_id=found1.id,
-                text_score=0.91,
-                image_score=0.86,
-                metadata_score=0.95,
-                combined_score=0.88,
-                explanation=(
-                    "Strong semantic alignment: both describe blue wireless on-ear headphones with black cushions. "
-                    "Exact location match (Central Library 2nd Floor). Lost and found on the same date."
-                ),
-                status="PENDING",
-            )
-            db.add(match1)
+        # ── 3b. Generate Embeddings for Seeded Reports ────────────────
+        from backend.embeddings import embedding_service
+        from backend.matching import run_matching_for_lost_report
 
-        match2 = db.query(Match).filter(
-            Match.lost_report_id == lost2.id, Match.found_report_id == found2.id
-        ).first()
-        if not match2:
-            match2 = Match(
-                lost_report_id=lost2.id,
-                found_report_id=found2.id,
-                text_score=0.95,
-                image_score=0.89,
-                metadata_score=0.92,
-                combined_score=0.92,
-                explanation=(
-                    "Very high match: both items are Casio scientific calculators with protective cover. "
-                    "Found in Electronics Lab 3 on the same date as the reported loss."
-                ),
-                status="PENDING",
-            )
-            db.add(match2)
+        for r in [lost1, lost2, lost3]:
+            if r.text_embedding is None:
+                text = embedding_service.build_item_text(
+                    r.item_name, r.category, r.description, r.distinguishing_info, r.location
+                )
+                r.text_embedding = embedding_service.generate_text_embedding(text)
+
+        for r in [found1, found2, found3, found4]:
+            if r.text_embedding is None:
+                text = embedding_service.build_item_text(
+                    r.item_name, r.category, r.description, location=r.location_found
+                )
+                r.text_embedding = embedding_service.generate_text_embedding(text)
+
+        db.commit()
+
+        # ── 4. Compute AI Matches ────────────────────────────────
+        run_matching_for_lost_report(lost1.id, db)
+        run_matching_for_lost_report(lost2.id, db)
 
         # ── 5. Notifications ────────────────────────────────
         notif1 = db.query(Notification).filter(

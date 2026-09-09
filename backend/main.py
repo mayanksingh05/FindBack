@@ -62,7 +62,7 @@ def read_root():
         "project": "FindBack",
         "status": "online",
         "docs": "/docs",
-        "phase": "Phase 2 (UI & Auth Prototype)",
+        "phase": "Phase 3 (Semantic AI Matching & Vector Search Engine)",
     }
 
 
