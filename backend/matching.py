@@ -543,4 +543,7 @@ def _build_claim_response(claim, student, match, db) -> ClaimResponse:
         lost_item_name=match.lost_report.item_name if match and match.lost_report else None,
         lost_image=match.lost_report.image_path if match and match.lost_report else None,
         found_image=match.found_report.image_path if match and match.found_report else None,
+        found_report_number=match.found_report.report_number if match and match.found_report else None,
+        category=match.found_report.category if match and match.found_report else None,
+        location_found=match.found_report.location_found if match and match.found_report else None,
     )

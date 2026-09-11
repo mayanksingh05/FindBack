@@ -137,6 +137,9 @@ class ClaimResponse(BaseModel):
     lost_item_name: Optional[str] = None
     lost_image: Optional[str] = None
     found_image: Optional[str] = None
+    found_report_number: Optional[str] = None
+    category: Optional[str] = None
+    location_found: Optional[str] = None
     class Config:
         from_attributes = True
 

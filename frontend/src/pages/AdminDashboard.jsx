@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { reportService, matchService } from '../services/api';
+import ReceiptModal from '../components/ReceiptModal';
 import { Shield, Package, CheckCircle2, XCircle, PlusCircle, UserCheck, Clock, Inbox, Image as ImageIcon, Phone, ShieldCheck, FileCheck } from 'lucide-react';
 
 export default function AdminDashboard({ onOpenReport }) {
@@ -7,6 +8,7 @@ export default function AdminDashboard({ onOpenReport }) {
   const [claims, setClaims] = useState([]);
   const [foundReports, setFoundReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedReceiptClaim, setSelectedReceiptClaim] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -22,7 +24,18 @@ export default function AdminDashboard({ onOpenReport }) {
 
   const handleClaimAction = async (claimId, newStatus) => {
     try {
-      await matchService.updateClaimStatus(claimId, newStatus);
+      let handoverNotes = null;
+      if (newStatus === 'VERIFIED') {
+        handoverNotes = window.prompt(
+          'Confirm Handover: Enter verification audit notes (optional):',
+          'Physical identity verified with college photo ID card. Distinctive marks verified in-person. Custody released.'
+        );
+        if (handoverNotes === null) return;
+      } else {
+        const confirmFail = window.confirm('Are you sure you want to mark this claim as FAILED?');
+        if (!confirmFail) return;
+      }
+      await matchService.updateClaimStatus(claimId, { status: newStatus, handover_notes: handoverNotes });
       loadData();
     } catch (err) { alert(err.response?.data?.detail || 'Action failed'); }
   };
@@ -254,9 +267,9 @@ export default function AdminDashboard({ onOpenReport }) {
           {activeTab === 'history' && (
             <div className="card" style={{ overflow: 'hidden' }}>
               <table className="data-table">
-                <thead><tr><th>Student</th><th>Enrollment</th><th>Item Claimed</th><th>Match %</th><th>Date</th><th>Result</th></tr></thead>
+                <thead><tr><th>Student</th><th>Enrollment</th><th>Item Claimed</th><th>Match %</th><th>Date</th><th>Result</th><th>Handover Receipt</th></tr></thead>
                 <tbody>
-                  {resolvedClaims.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No resolved claims yet.</td></tr> :
+                  {resolvedClaims.length === 0 ? <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No resolved claims yet.</td></tr> :
                     resolvedClaims.map((c) => (
                       <tr key={c.id}>
                         <td style={{ fontWeight: 600 }}>{c.student_name}</td>
@@ -265,6 +278,19 @@ export default function AdminDashboard({ onOpenReport }) {
                         <td>{c.combined_score ? `${Math.round(c.combined_score * 100)}%` : '-'}</td>
                         <td>{c.resolved_at ? new Date(c.resolved_at).toLocaleDateString() : '-'}</td>
                         <td>{statusBadge(c.status)}</td>
+                        <td>
+                          {c.status === 'VERIFIED' ? (
+                            <button
+                              onClick={() => setSelectedReceiptClaim(c)}
+                              className="btn btn-sm btn-outline"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                            >
+                              <FileCheck size={13} color="var(--emerald)" /> View Receipt
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>-</span>
+                          )}
+                        </td>
                       </tr>
                     ))
                   }
@@ -273,6 +299,13 @@ export default function AdminDashboard({ onOpenReport }) {
             </div>
           )}
         </>
+      )}
+
+      {selectedReceiptClaim && (
+        <ReceiptModal
+          claim={selectedReceiptClaim}
+          onClose={() => setSelectedReceiptClaim(null)}
+        />
       )}
     </div>
   );

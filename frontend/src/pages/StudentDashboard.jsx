@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { reportService, matchService } from '../services/api';
 import MatchModal from '../components/MatchModal';
-import { Sparkles, Clock, CheckCircle2, MapPin, Tag, PlusCircle, AlertCircle, FileText, PackageCheck, ArrowRight } from 'lucide-react';
+import ReceiptModal from '../components/ReceiptModal';
+import { Sparkles, Clock, CheckCircle2, MapPin, Tag, PlusCircle, AlertCircle, FileText, PackageCheck, ArrowRight, FileCheck } from 'lucide-react';
 
 export default function StudentDashboard({ onOpenReport }) {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ export default function StudentDashboard({ onOpenReport }) {
   const [matches, setMatches] = useState([]);
   const [claims, setClaims] = useState([]);
   const [selectedMatch, setSelectedMatch] = useState(null);
+  const [selectedReceiptClaim, setSelectedReceiptClaim] = useState(null);
   const [loading, setLoading] = useState(true);
   const [scanningReportId, setScanningReportId] = useState(null);
 
@@ -226,9 +228,9 @@ export default function StudentDashboard({ onOpenReport }) {
           {activeTab === 'claims' && (
             <div className="card" style={{ overflow: 'hidden' }}>
               <table className="data-table">
-                <thead><tr><th>Claim</th><th>Item</th><th>Match Score</th><th>Submitted</th><th>Status</th></tr></thead>
+                <thead><tr><th>Claim</th><th>Item</th><th>Match Score</th><th>Submitted</th><th>Status</th><th>Handover Receipt</th></tr></thead>
                 <tbody>
-                  {claims.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No verification requests yet.</td></tr> :
+                  {claims.length === 0 ? <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>No verification requests yet.</td></tr> :
                     claims.map((c) => (
                       <tr key={c.id}>
                         <td style={{ fontFamily: 'monospace' }}>#{c.id.substring(0, 8)}</td>
@@ -236,6 +238,19 @@ export default function StudentDashboard({ onOpenReport }) {
                         <td>{c.combined_score ? <div className="ai-score-pill"><span className="score-number">{Math.round(c.combined_score * 100)}%</span></div> : '-'}</td>
                         <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
                         <td>{statusBadge(c.status)}</td>
+                        <td>
+                          {c.status === 'VERIFIED' ? (
+                            <button
+                              onClick={() => setSelectedReceiptClaim(c)}
+                              className="btn btn-sm btn-outline"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                            >
+                              <FileCheck size={13} color="var(--emerald)" /> View Receipt
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>Pending Visit</span>
+                          )}
+                        </td>
                       </tr>
                     ))
                   }
@@ -247,6 +262,7 @@ export default function StudentDashboard({ onOpenReport }) {
       )}
 
       {selectedMatch && <MatchModal match={selectedMatch} onClose={() => setSelectedMatch(null)} onClaimSuccess={() => loadData()} userRole="student" />}
+      {selectedReceiptClaim && <ReceiptModal claim={selectedReceiptClaim} onClose={() => setSelectedReceiptClaim(null)} />}
     </div>
   );
 }
