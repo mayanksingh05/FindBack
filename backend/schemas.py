@@ -110,7 +110,10 @@ class MatchResponse(BaseModel):
 
 # ----- Claim Schemas -----
 class ClaimCreate(BaseModel):
-    match_id: str
+    match_id: Optional[str] = None
+    proof_description: Optional[str] = None
+    proof_image_path: Optional[str] = None
+    student_phone: Optional[str] = None
 
 class ClaimResponse(BaseModel):
     id: str
@@ -118,6 +121,11 @@ class ClaimResponse(BaseModel):
     student_id: str
     found_report_id: str
     status: str
+    proof_description: Optional[str] = None
+    proof_image_path: Optional[str] = None
+    student_phone: Optional[str] = None
+    handover_notes: Optional[str] = None
+    receipt_number: Optional[str] = None
     admin_id: Optional[str] = None
     resolved_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
@@ -134,6 +142,7 @@ class ClaimResponse(BaseModel):
 
 class ClaimStatusUpdate(BaseModel):
     status: str  # 'VERIFIED' | 'FAILED'
+    handover_notes: Optional[str] = None
 
 
 # ----- Notification Schemas -----

@@ -384,10 +384,11 @@ def get_match_detail(
 @router.post("/{match_id}/claim", response_model=ClaimResponse, status_code=status.HTTP_201_CREATED)
 def submit_claim(
     match_id: str,
+    claim_in: Optional[ClaimCreate] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Student submits a verification claim. This appears in admin's queue."""
+    """Student submits a verification claim with proof details. This appears in admin's queue."""
     match = (
         db.query(Match)
         .options(joinedload(Match.lost_report), joinedload(Match.found_report))
@@ -403,10 +404,17 @@ def submit_claim(
     if existing:
         return _build_claim_response(existing, current_user, match, db)
 
+    proof_desc = claim_in.proof_description if claim_in else None
+    proof_img = claim_in.proof_image_path if claim_in else None
+    student_phone = claim_in.student_phone if claim_in else None
+
     claim = Claim(
         match_id=match.id,
         student_id=current_user.id,
         found_report_id=match.found_report_id,
+        proof_description=proof_desc,
+        proof_image_path=proof_img,
+        student_phone=student_phone,
         status="PENDING_VERIFICATION",
     )
     db.add(claim)
@@ -467,6 +475,13 @@ def update_claim_status(
     claim.status = update_in.status
     claim.admin_id = admin_user.id
     claim.resolved_at = datetime.now(timezone.utc)
+    if update_in.handover_notes:
+        claim.handover_notes = update_in.handover_notes
+
+    # Auto-generate digital property release receipt number on verification
+    if update_in.status == "VERIFIED" and not claim.receipt_number:
+        import random
+        claim.receipt_number = f"REC-{datetime.now().year}-{random.randint(10000, 99999)}"
 
     match = (
         db.query(Match)
@@ -486,7 +501,7 @@ def update_claim_status(
             match.status = "REJECTED"
 
     if update_in.status == "VERIFIED":
-        msg = "Your verification was successful! Please collect your item from the Campus Security Desk."
+        msg = f"Your verification was successful! Receipt #{claim.receipt_number} issued. Please collect your item from the Campus Security Desk."
     else:
         msg = "Verification was unsuccessful. The item details did not match during in-person verification."
 
@@ -513,6 +528,11 @@ def _build_claim_response(claim, student, match, db) -> ClaimResponse:
         student_id=claim.student_id,
         found_report_id=claim.found_report_id,
         status=claim.status,
+        proof_description=claim.proof_description,
+        proof_image_path=claim.proof_image_path,
+        student_phone=claim.student_phone,
+        handover_notes=claim.handover_notes,
+        receipt_number=claim.receipt_number,
         admin_id=claim.admin_id,
         resolved_at=claim.resolved_at,
         created_at=claim.created_at,

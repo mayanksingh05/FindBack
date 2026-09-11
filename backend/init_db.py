@@ -21,7 +21,17 @@ def init_db():
 
     print("Creating database tables...")
     Base.metadata.create_all(bind=engine)
-    print("Database tables created successfully!")
+    
+    # Safe migration: ensure new Claim columns exist if table was created previously
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE claims ADD COLUMN IF NOT EXISTS proof_description TEXT;"))
+        conn.execute(text("ALTER TABLE claims ADD COLUMN IF NOT EXISTS proof_image_path VARCHAR(500);"))
+        conn.execute(text("ALTER TABLE claims ADD COLUMN IF NOT EXISTS student_phone VARCHAR(20);"))
+        conn.execute(text("ALTER TABLE claims ADD COLUMN IF NOT EXISTS handover_notes TEXT;"))
+        conn.execute(text("ALTER TABLE claims ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(50);"))
+        conn.commit()
+        
+    print("Database tables and migration checks completed successfully!")
 
 if __name__ == "__main__":
     init_db()

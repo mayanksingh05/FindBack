@@ -51,10 +51,10 @@ export const matchService = {
   getMatches: async () => (await api.get('/matches')).data,
   getMatchDetail: async (id) => (await api.get(`/matches/${id}`)).data,
   findMatches: async (lostReportId) => (await api.post(`/matches/find-matches/${lostReportId}`)).data,
-  submitClaim: async (matchId) => (await api.post(`/matches/${matchId}/claim`, {})).data,
+  submitClaim: async (matchId, claimData = {}) => (await api.post(`/matches/${matchId}/claim`, claimData)).data,
   getClaims: async () => (await api.get('/matches/claims/all')).data,
-  updateClaimStatus: async (claimId, status) =>
-    (await api.patch(`/matches/claims/${claimId}`, { status })).data,
+  updateClaimStatus: async (claimId, statusData) =>
+    (await api.patch(`/matches/claims/${claimId}`, typeof statusData === 'string' ? { status: statusData } : statusData)).data,
 };
 
 export const notificationService = {

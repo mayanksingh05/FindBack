@@ -141,6 +141,15 @@ class Claim(Base):
     # Status: PENDING_VERIFICATION | VERIFIED | FAILED
     status = Column(String(30), default="PENDING_VERIFICATION")
     
+    # Ownership proof submitted by claimant student
+    proof_description = Column(Text, nullable=True)
+    proof_image_path = Column(String(500), nullable=True)
+    student_phone = Column(String(20), nullable=True)
+
+    # Handover verification audit fields
+    handover_notes = Column(Text, nullable=True)
+    receipt_number = Column(String(50), unique=True, nullable=True)
+    
     admin_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
     resolved_at = Column(DateTime, nullable=True)
     

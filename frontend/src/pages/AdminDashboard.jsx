@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { reportService, matchService } from '../services/api';
-import { Shield, Package, CheckCircle2, XCircle, PlusCircle, UserCheck, Clock, Inbox, Image as ImageIcon } from 'lucide-react';
+import { Shield, Package, CheckCircle2, XCircle, PlusCircle, UserCheck, Clock, Inbox, Image as ImageIcon, Phone, ShieldCheck, FileCheck } from 'lucide-react';
 
 export default function AdminDashboard({ onOpenReport }) {
   const [activeTab, setActiveTab] = useState('verification');
@@ -109,31 +109,61 @@ export default function AdminDashboard({ onOpenReport }) {
                     <div key={c.id} className="card" style={{ padding: '1.5rem' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
                         <div style={{ flex: 1, minWidth: '300px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                             <span className="badge badge-blue">{c.student_college_id}</span>
                             <span style={{ fontWeight: 700, fontSize: '1rem' }}>{c.student_name}</span>
+                            {c.student_phone && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
+                                <Phone size={13} /> {c.student_phone}
+                              </span>
+                            )}
                             {c.combined_score && <div className="ai-score-pill" style={{ marginLeft: '0.5rem' }}><span className="score-number">{Math.round(c.combined_score * 100)}%</span> match</div>}
                           </div>
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                             <strong>Claims:</strong> {c.item_name}
                             {c.lost_item_name && <> | <strong>Lost report:</strong> {c.lost_item_name}</>}
                           </div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem' }}>
                             <Clock size={13} /> Submitted {c.created_at ? new Date(c.created_at).toLocaleDateString() : 'today'}
                           </div>
+
+                          {/* Claimant Proof Statement */}
+                          {c.proof_description && (
+                            <div style={{ margin: '0.75rem 0', padding: '0.75rem 1rem', backgroundColor: '#f0fdf4', borderRadius: 'var(--radius-sm)', border: '1px solid #bbf7d0' }}>
+                              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.25rem' }}>
+                                <ShieldCheck size={14} /> Claimant's Ownership Proof:
+                              </div>
+                              <div style={{ fontSize: '0.82rem', color: '#14532d', whiteSpace: 'pre-line', lineHeight: 1.4 }}>
+                                {c.proof_description}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Images row */}
-                          {(c.lost_image || c.found_image) && (
-                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem' }}>
+                          {(c.lost_image || c.found_image || c.proof_image_path) && (
+                            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                               {c.lost_image && (
                                 <div>
                                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}><ImageIcon size={11} /> Lost item photo</div>
-                                  <img src={c.lost_image} alt="Lost" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                                  <a href={c.lost_image} target="_blank" rel="noreferrer">
+                                    <img src={c.lost_image} alt="Lost" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                                  </a>
                                 </div>
                               )}
                               {c.found_image && (
                                 <div>
                                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '0.2rem' }}><ImageIcon size={11} /> Found item photo</div>
-                                  <img src={c.found_image} alt="Found" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                                  <a href={c.found_image} target="_blank" rel="noreferrer">
+                                    <img src={c.found_image} alt="Found" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                                  </a>
+                                </div>
+                              )}
+                              {c.proof_image_path && (
+                                <div>
+                                  <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 600, marginBottom: '0.2rem' }}><FileCheck size={11} /> Counter-Proof (Bill/Box)</div>
+                                  <a href={c.proof_image_path} target="_blank" rel="noreferrer">
+                                    <img src={c.proof_image_path} alt="Proof" style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '2px solid #86efac' }} />
+                                  </a>
                                 </div>
                               )}
                             </div>
