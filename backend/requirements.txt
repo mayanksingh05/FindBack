@@ -33,6 +33,7 @@ langchain-google-genai
 # langchain-groq
 # langchain-ollama
 
-# Utilities
+# Utilities & Testing
 httpx
 aiofiles
+pytest
