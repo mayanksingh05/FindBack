@@ -262,3 +262,216 @@ def test_claimant_proof_and_receipt_generation_lifecycle():
     verified_claim = next(c for c in my_claims if c["id"] == claim_id)
     assert verified_claim["receipt_number"] == verified_data["receipt_number"]
     assert verified_claim["handover_notes"] == handover_notes
+
+
+def test_multimodal_search_api():
+    """Test POST /api/reports/search with semantic natural language text query."""
+    uid = uuid.uuid4().hex[:8]
+    reg_res = client.post("/api/auth/register", json={
+        "email": f"search_{uid}@campus.edu",
+        "name": f"Search Student {uid}",
+        "college_id": f"SCH-{uid[:4].upper()}",
+        "password": "Password123!",
+        "role": "student",
+    })
+    token = reg_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = client.post("/api/reports/search", json={
+        "query": "MacBook laptop in library",
+        "category": "Electronics",
+    }, headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert isinstance(data, list)
+    if len(data) > 0:
+        top = data[0]
+        assert "item_name" in top
+        assert "similarity_score" in top
+        assert top["similarity_score"] >= 0.0
+
+
+def test_contested_claims_and_student_multi_claim_auto_resolution():
+    """
+    Test Phase 5 contested claims and student multi-claim automated resolution:
+    - Item 1 has 2 competing claims (Student 1 and Student 2) -> flagged as contested.
+    - Student 1 also submitted a claim for Item 2.
+    - When Item 1 is verified for Student 1:
+      1) Competing claim for Item 1 by Student 2 is auto-resolved as REJECTED_CONFLICT.
+      2) Other claim for Item 2 by Student 1 is auto-resolved as AUTO_RESOLVED_OTHER_CLAIM.
+    """
+    uid = uuid.uuid4().hex[:8]
+    # Admin login
+    admin_res = client.post("/api/auth/login", json={"email": "admin@college.edu", "password": "Admin@123"})
+    admin_token = admin_res.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # Register Student 1
+    s1_res = client.post("/api/auth/register", json={
+        "email": f"s1_{uid}@campus.edu",
+        "name": f"Student One {uid}",
+        "college_id": f"S1-{uid[:4].upper()}",
+        "password": "Password123!",
+        "role": "student",
+    })
+    s1_token = s1_res.json()["access_token"]
+    s1_headers = {"Authorization": f"Bearer {s1_token}"}
+
+    # Register Student 2
+    s2_res = client.post("/api/auth/register", json={
+        "email": f"s2_{uid}@campus.edu",
+        "name": f"Student Two {uid}",
+        "college_id": f"S2-{uid[:4].upper()}",
+        "password": "Password123!",
+        "role": "student",
+    })
+    s2_token = s2_res.json()["access_token"]
+    s2_headers = {"Authorization": f"Bearer {s2_token}"}
+
+    # Admin creates 2 Found Items
+    f1_res = client.post("/api/reports/found", json={
+        "item_name": "Titan Chronograph Watch",
+        "category": "Accessories",
+        "description": "Silver Titan watch found near sports ground pavilion",
+        "location_found": "Sports Ground",
+        "date_found": "2026-09-12",
+    }, headers=admin_headers)
+    f1_id = f1_res.json()["id"]
+
+    f2_res = client.post("/api/reports/found", json={
+        "item_name": "Fastrack Black Watch",
+        "category": "Accessories",
+        "description": "Black watch found in gym locker area",
+        "location_found": "Gymnasium",
+        "date_found": "2026-09-12",
+    }, headers=admin_headers)
+    f2_id = f2_res.json()["id"]
+
+    # Student 1 creates Lost Report for Titan Watch
+    l1_res = client.post("/api/reports/lost", json={
+        "item_name": "Titan Watch",
+        "category": "Accessories",
+        "description": "Lost my silver Titan watch around sports pavilion",
+        "location": "Sports Ground",
+        "date_lost": "2026-09-12",
+    }, headers=s1_headers)
+    l1_id = l1_res.json()["id"]
+
+    # Student 2 creates Lost Report for Titan Watch
+    l2_res = client.post("/api/reports/lost", json={
+        "item_name": "Titan Silver Watch",
+        "category": "Accessories",
+        "description": "Misplaced Titan chronograph watch at sports ground",
+        "location": "Sports Ground",
+        "date_lost": "2026-09-12",
+    }, headers=s2_headers)
+    l2_id = l2_res.json()["id"]
+
+    # Student 1 also creates Lost Report for a gym watch
+    l3_res = client.post("/api/reports/lost", json={
+        "item_name": "Black Watch",
+        "category": "Accessories",
+        "description": "Lost backup watch at gym",
+        "location": "Gymnasium",
+        "date_lost": "2026-09-12",
+    }, headers=s1_headers)
+    l3_id = l3_res.json()["id"]
+
+    # Generate matches
+    m1_res = client.post(f"/api/matches/find-matches/{l1_id}", headers=s1_headers)
+    m1_list = m1_res.json()
+    m1 = next(m for m in m1_list if m["found_report"]["id"] == f1_id)
+
+    m2_res = client.post(f"/api/matches/find-matches/{l2_id}", headers=s2_headers)
+    m2_list = m2_res.json()
+    m2 = next(m for m in m2_list if m["found_report"]["id"] == f1_id)
+
+    m3_res = client.post(f"/api/matches/find-matches/{l3_id}", headers=s1_headers)
+    m3_list = m3_res.json()
+    m3 = next(m for m in m3_list if m["found_report"]["id"] == f2_id)
+
+    # 1. Student 1 claims Item 1
+    c1_res = client.post(f"/api/matches/{m1['id']}/claim", json={
+        "match_id": m1["id"],
+        "proof_description": "Purchased from Titan store in 2025, engraved back.",
+        "student_phone": "9876500001",
+    }, headers=s1_headers)
+    assert c1_res.status_code == 201
+    c1_id = c1_res.json()["id"]
+
+    # 2. Student 2 also claims Item 1 (Contested Claim scenario)
+    c2_res = client.post(f"/api/matches/{m2['id']}/claim", json={
+        "match_id": m2["id"],
+        "proof_description": "My uncle gave it to me, has metal strap.",
+        "student_phone": "9876500002",
+    }, headers=s2_headers)
+    assert c2_res.status_code == 201
+    c2_id = c2_res.json()["id"]
+
+    # 3. Student 1 also claims Item 2 (Multi-claim candidate scenario)
+    c3_res = client.post(f"/api/matches/{m3['id']}/claim", json={
+        "match_id": m3["id"],
+        "proof_description": "Black watch with silicone strap.",
+        "student_phone": "9876500001",
+    }, headers=s1_headers)
+    assert c3_res.status_code == 201
+    c3_id = c3_res.json()["id"]
+
+    # Admin checks claims: Item 1 must be flagged as is_contested = True
+    admin_claims_res = client.get("/api/matches/claims/all", headers=admin_headers)
+    assert admin_claims_res.status_code == 200
+    claims_list = admin_claims_res.json()
+    c1_admin = next(c for c in claims_list if c["id"] == c1_id)
+    assert c1_admin["is_contested"] is True
+    assert c1_admin["contested_count"] >= 2
+
+    # Admin verifies Student 1's claim on Item 1
+    verify_res = client.patch(
+        f"/api/matches/claims/{c1_id}",
+        json={
+            "status": "VERIFIED",
+            "handover_notes": "Student 1 provided proof and bill. Handed over successfully.",
+        },
+        headers=admin_headers,
+    )
+    assert verify_res.status_code == 200
+    assert verify_res.json()["status"] == "VERIFIED"
+
+    # Verify automated resolutions:
+    # 1. Student 2's competing claim on Item 1 must be REJECTED_CONFLICT
+    all_claims_after = client.get("/api/matches/claims/all", headers=admin_headers).json()
+    c2_after = next(c for c in all_claims_after if c["id"] == c2_id)
+    assert c2_after["status"] == "REJECTED_CONFLICT"
+
+    # 2. Student 1's other pending claim on Item 2 must be AUTO_RESOLVED_OTHER_CLAIM
+    c3_after = next(c for c in all_claims_after if c["id"] == c3_id)
+    assert c3_after["status"] == "AUTO_RESOLVED_OTHER_CLAIM"
+
+
+def test_analytics_and_csv_audit_export():
+    """Test /api/analytics/overview KPIs and /api/analytics/export-csv streaming file."""
+    admin_res = client.post("/api/auth/login", json={"email": "admin@college.edu", "password": "Admin@123"})
+    admin_token = admin_res.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 1. Test Overview Analytics
+    overview_res = client.get("/api/analytics/overview", headers=admin_headers)
+    assert overview_res.status_code == 200
+    overview_data = overview_res.json()
+    assert "summary" in overview_data
+    assert "hotspots" in overview_data
+    assert "categories" in overview_data
+
+    summary = overview_data["summary"]
+    assert "recovery_rate_pct" in summary
+    assert "returned_to_owner" in summary
+    assert "at_desk" in summary
+    assert "avg_turnaround_days" in summary
+
+    # 2. Test CSV Export
+    csv_res = client.get("/api/analytics/export-csv", headers=admin_headers)
+    assert csv_res.status_code == 200
+    assert "text/csv" in csv_res.headers.get("content-type", "")
+    assert "attachment; filename=findback_handover_audit_" in csv_res.headers.get("content-disposition", "")
+    assert "Receipt Number,System Audit ID,Claimant Name" in csv_res.text
+
