@@ -64,4 +64,9 @@ export const notificationService = {
   markAllRead: async () => (await api.patch('/notifications/read-all')).data,
 };
 
+export const analyticsService = {
+  getOverview: async () => (await api.get('/analytics/overview')).data,
+  exportCsvUrl: () => '/api/analytics/export-csv',
+};
+
 export default api;

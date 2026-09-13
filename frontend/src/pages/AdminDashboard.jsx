@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { reportService, matchService } from '../services/api';
+import { reportService, matchService, analyticsService } from '../services/api';
 import ReceiptModal from '../components/ReceiptModal';
 import ContestedClaimsModal from '../components/ContestedClaimsModal';
-import { Shield, Package, CheckCircle2, XCircle, PlusCircle, UserCheck, Clock, Inbox, Image as ImageIcon, Phone, ShieldCheck, FileCheck, AlertTriangle } from 'lucide-react';
+import { Shield, Package, CheckCircle2, XCircle, PlusCircle, UserCheck, Clock, Inbox, Image as ImageIcon, Phone, ShieldCheck, FileCheck, AlertTriangle, BarChart3, Download, TrendingUp, MapPin, Layers } from 'lucide-react';
 
 export default function AdminDashboard({ onOpenReport }) {
   const [activeTab, setActiveTab] = useState('verification');
   const [claims, setClaims] = useState([]);
   const [foundReports, setFoundReports] = useState([]);
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedReceiptClaim, setSelectedReceiptClaim] = useState(null);
   const [contestedModalData, setContestedModalData] = useState(null);
@@ -17,9 +19,17 @@ export default function AdminDashboard({ onOpenReport }) {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [c, f] = await Promise.all([matchService.getClaims(), reportService.getFoundReports()]);
+      const [c, f, a] = await Promise.all([
+        matchService.getClaims(),
+        reportService.getFoundReports(),
+        analyticsService.getOverview().catch((e) => {
+          console.warn('Analytics unavailable', e);
+          return null;
+        }),
+      ]);
       setClaims(c);
       setFoundReports(f);
+      if (a) setAnalyticsData(a);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
@@ -47,6 +57,30 @@ export default function AdminDashboard({ onOpenReport }) {
       await reportService.approveFoundReport(reportId);
       loadData();
     } catch (err) { alert(err.response?.data?.detail || 'Approval failed'); }
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      setExportingCsv(true);
+      const token = localStorage.getItem('findback_token');
+      const response = await fetch('/api/analytics/export-csv', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error('Failed to export CSV audit log');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `findback_handover_audit_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Error exporting CSV: ' + err.message);
+    } finally {
+      setExportingCsv(false);
+    }
   };
 
   const pendingClaims = claims.filter(c => c.status === 'PENDING_VERIFICATION');
@@ -111,12 +145,13 @@ export default function AdminDashboard({ onOpenReport }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border)', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto' }}>
         {[
           { key: 'verification', label: `Verification Queue (${pendingClaims.length})`, icon: <UserCheck size={18} /> },
           { key: 'pending', label: `Pending Found Items (${pendingFound.length})`, icon: <Inbox size={18} /> },
           { key: 'inventory', label: `Desk Inventory (${approvedFound.length})`, icon: <Package size={18} /> },
           { key: 'history', label: `Resolved (${resolvedClaims.length})`, icon: <CheckCircle2 size={18} /> },
+          { key: 'analytics', label: 'Analytics & Trends', icon: <BarChart3 size={18} /> },
         ].map((t) => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
             style={{ padding: '0.75rem 1rem', background: 'none', border: 'none', borderBottom: activeTab === t.key ? '3px solid var(--accent)' : '3px solid transparent', marginBottom: '-2px', fontWeight: 700, fontSize: '0.9rem', color: activeTab === t.key ? 'var(--accent)' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
@@ -330,6 +365,156 @@ export default function AdminDashboard({ onOpenReport }) {
                   }
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ANALYTICS & TRENDS */}
+          {activeTab === 'analytics' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {/* Executive Metrics Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.25rem' }}>
+                <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--emerald)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>RECOVERY RATE</span>
+                    <TrendingUp size={18} color="var(--emerald)" />
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--emerald)' }}>
+                    {analyticsData?.summary?.recovery_rate_pct ?? 0}%
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-light)', marginTop: '0.25rem' }}>
+                    Of turned-in items safely returned
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--blue)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>SUCCESSFUL HANDOVERS</span>
+                    <CheckCircle2 size={18} color="var(--blue)" />
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary)' }}>
+                    {analyticsData?.summary?.returned_to_owner ?? 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-light)', marginTop: '0.25rem' }}>
+                    Verified physical returns
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid #8b5cf6' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>SECURITY DESK VAULT</span>
+                    <Package size={18} color="#8b5cf6" />
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary)' }}>
+                    {analyticsData?.summary?.at_desk ?? 0}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-light)', marginTop: '0.25rem' }}>
+                    Items awaiting student claims
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1.25rem', borderLeft: '4px solid var(--accent)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>AVG TURNAROUND</span>
+                    <Clock size={18} color="var(--accent)" />
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--accent)' }}>
+                    {analyticsData?.summary?.avg_turnaround_days ?? 0} <span style={{ fontSize: '1rem', fontWeight: 600 }}>days</span>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-light)', marginTop: '0.25rem' }}>
+                    Claim to physical release time
+                  </div>
+                </div>
+              </div>
+
+              {/* Hotspots & Categories Split */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.5rem' }}>
+                {/* Campus Loss Hotspots */}
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                    <MapPin size={18} color="var(--accent)" />
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Campus Loss Hotspots</h3>
+                  </div>
+                  {(!analyticsData?.hotspots || analyticsData.hotspots.length === 0) ? (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                      No location reports logged yet.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {analyticsData.hotspots.map((h, i) => {
+                        const maxCount = Math.max(...analyticsData.hotspots.map(x => x.count), 1);
+                        const pct = Math.round((h.count / maxCount) * 100);
+                        return (
+                          <div key={h.location}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
+                              <span style={{ fontWeight: 600 }}>
+                                <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>#{i + 1}</span>
+                                {h.location}
+                              </span>
+                              <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{h.count} incidents</span>
+                            </div>
+                            <div style={{ height: '7px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', backgroundColor: 'var(--accent)', borderRadius: '4px', transition: 'width 0.4s ease' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Property Categories */}
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                    <Layers size={18} color="var(--blue)" />
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Category Distribution</h3>
+                  </div>
+                  {(!analyticsData?.categories || analyticsData.categories.length === 0) ? (
+                    <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                      No category data logged yet.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {analyticsData.categories.map((c) => {
+                        const maxCount = Math.max(...analyticsData.categories.map(x => x.count), 1);
+                        const pct = Math.round((c.count / maxCount) * 100);
+                        return (
+                          <div key={c.category}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.35rem' }}>
+                              <span style={{ fontWeight: 600 }}>{c.category}</span>
+                              <span style={{ fontWeight: 700, color: 'var(--blue)' }}>{c.count} items</span>
+                            </div>
+                            <div style={{ height: '7px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', backgroundColor: 'var(--blue)', borderRadius: '4px', transition: 'width 0.4s ease' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Institutional Audit Export Banner */}
+              <div className="card" style={{ padding: '1.75rem 2rem', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.25rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                    <ShieldCheck size={20} color="var(--emerald)" />
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Institutional Handover Audit Log</h3>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '600px' }}>
+                    Export a permanent, verifiable CSV record of all returned campus property with student enrollment IDs, official receipt tokens, and security timestamps for institutional audit compliance.
+                  </p>
+                </div>
+                <button
+                  onClick={handleExportCsv}
+                  disabled={exportingCsv}
+                  className="btn btn-outline"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, borderColor: 'var(--primary)', color: 'var(--primary)' }}
+                >
+                  <Download size={16} />
+                  {exportingCsv ? 'Generating CSV...' : 'Export Handover Audit CSV'}
+                </button>
+              </div>
             </div>
           )}
         </>

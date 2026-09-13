@@ -12,6 +12,7 @@ from backend.auth import router as auth_router
 from backend.reports import router as reports_router
 from backend.matching import router as matching_router
 from backend.notifications import router as notifications_router
+from backend.analytics import router as analytics_router
 
 
 @asynccontextmanager
@@ -54,6 +55,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(reports_router, prefix="/api")
 app.include_router(matching_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
 
 
 @app.get("/")
