@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { notificationService } from '../services/api';
+import Toast from './Toast';
 import { 
   Compass, 
   Bell, 
@@ -11,7 +12,10 @@ import {
   GraduationCap, 
   CheckCheck,
   Search,
-  Check
+  Check,
+  Sparkles,
+  FileCheck,
+  ExternalLink
 } from 'lucide-react';
 
 export default function Navbar({ onOpenReport }) {
@@ -19,19 +23,76 @@ export default function Navbar({ onOpenReport }) {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
+  const [toasts, setToasts] = useState([]);
+  const knownNotifIds = useRef(new Set());
+  const isInitialLoad = useRef(true);
 
   useEffect(() => {
-    if (user) {
-      loadNotifications();
+    if (!user) {
+      setNotifications([]);
+      setToasts([]);
+      knownNotifIds.current.clear();
+      isInitialLoad.current = true;
+      return;
     }
+
+    loadNotifications();
+    const interval = setInterval(() => {
+      loadNotifications(false);
+    }, 12000);
+
+    return () => clearInterval(interval);
   }, [user]);
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (initial = isInitialLoad.current) => {
     try {
       const data = await notificationService.getNotifications();
       setNotifications(data);
+
+      if (initial) {
+        data.forEach((n) => knownNotifIds.current.add(n.id));
+        isInitialLoad.current = false;
+      } else {
+        // Detect newly arrived notifications
+        const incomingNew = data.filter((n) => !knownNotifIds.current.has(n.id) && !n.is_read);
+        if (incomingNew.length > 0) {
+          incomingNew.forEach((n) => {
+            knownNotifIds.current.add(n.id);
+            const newToast = {
+              id: n.id,
+              title: n.title,
+              message: n.message,
+              type: n.type,
+              action: n.type === 'MATCH_FOUND' ? {
+                label: 'View AI Match',
+                onClick: () => navigate('/student/dashboard'),
+              } : (n.type === 'CLAIM_RESULT' ? {
+                label: 'View Handover Status',
+                onClick: () => navigate(user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard'),
+              } : null),
+            };
+
+            setToasts((prev) => [newToast, ...prev.slice(0, 2)]);
+
+            // Auto dismiss toast after 6 seconds
+            setTimeout(() => {
+              setToasts((prev) => prev.filter((t) => t.id !== n.id));
+            }, 6000);
+          });
+        }
+      }
     } catch (e) {
       console.error('Failed to load notifications:', e);
+    }
+  };
+
+  const handleMarkOneRead = async (e, id) => {
+    e.stopPropagation();
+    try {
+      await notificationService.markRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -243,28 +304,116 @@ export default function Navbar({ onOpenReport }) {
                       )}
                     </div>
 
-                    <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                    <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
                       {notifications.length === 0 ? (
-                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem 0' }}>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem 0' }}>
                           No notifications yet
                         </p>
                       ) : (
-                        notifications.map((n) => (
-                          <div key={n.id} style={{
-                            padding: '0.65rem 0.5rem',
-                            borderRadius: 'var(--radius-sm)',
-                            backgroundColor: n.is_read ? 'transparent' : 'var(--blue-subtle)',
-                            marginBottom: '0.35rem',
-                            borderLeft: n.is_read ? 'none' : '3px solid var(--blue)'
-                          }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                              {n.title}
+                        notifications.map((n) => {
+                          const isMatch = n.type === 'MATCH_FOUND' || n.reference_type === 'match';
+                          const isClaim = n.type === 'CLAIM_RESULT' || n.reference_type === 'claim';
+
+                          return (
+                            <div
+                              key={n.id}
+                              style={{
+                                padding: '0.75rem 0.65rem',
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: n.is_read ? 'transparent' : 'var(--blue-subtle)',
+                                marginBottom: '0.45rem',
+                                borderLeft: n.is_read ? '3px solid transparent' : '3px solid var(--blue)',
+                                borderBottom: '1px solid var(--border-subtle)',
+                                transition: 'background-color 0.15s ease',
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  {isMatch ? (
+                                    <Sparkles size={14} color="var(--accent)" />
+                                  ) : isClaim ? (
+                                    <FileCheck size={14} color="var(--emerald)" />
+                                  ) : (
+                                    <Bell size={14} color="var(--blue)" />
+                                  )}
+                                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                    {n.title}
+                                  </span>
+                                </div>
+                                {!n.is_read && (
+                                  <button
+                                    onClick={(e) => handleMarkOneRead(e, n.id)}
+                                    style={{
+                                      background: 'none',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      color: 'var(--text-muted)',
+                                      padding: '0.1rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                    }}
+                                    title="Mark as read"
+                                  >
+                                    <Check size={13} />
+                                  </button>
+                                )}
+                              </div>
+
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', lineHeight: 1.4 }}>
+                                {n.message}
+                              </div>
+
+                              {/* Interactive Deep-Link Actions */}
+                              <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.45rem' }}>
+                                {isMatch && (
+                                  <button
+                                    onClick={() => {
+                                      setShowNotifs(false);
+                                      navigate('/student/dashboard');
+                                    }}
+                                    className="btn btn-sm btn-outline"
+                                    style={{
+                                      padding: '0.2rem 0.5rem',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      borderColor: 'var(--accent)',
+                                      color: 'var(--accent-text)',
+                                      backgroundColor: 'var(--accent-subtle)',
+                                    }}
+                                  >
+                                    <Sparkles size={11} /> View AI Match
+                                  </button>
+                                )}
+
+                                {isClaim && (
+                                  <button
+                                    onClick={() => {
+                                      setShowNotifs(false);
+                                      navigate(user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard');
+                                    }}
+                                    className="btn btn-sm btn-outline"
+                                    style={{
+                                      padding: '0.2rem 0.5rem',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      borderColor: 'var(--emerald)',
+                                      color: 'var(--emerald-text)',
+                                      backgroundColor: 'var(--emerald-subtle)',
+                                    }}
+                                  >
+                                    <FileCheck size={11} /> View Handover Status
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                              {n.message}
-                            </div>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -322,6 +471,12 @@ export default function Navbar({ onOpenReport }) {
           )}
         </div>
       </div>
+
+      {/* Floating Real-Time Toast Alerts */}
+      <Toast
+        toasts={toasts}
+        onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+      />
     </header>
   );
 }
