@@ -11,10 +11,21 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.database import get_db
 from backend.models import User, LostReport, FoundReport, Notification
-from backend.schemas import LostReportCreate, LostReportResponse, FoundReportCreate, FoundReportResponse
+from backend.schemas import (
+    LostReportCreate,
+    LostReportResponse,
+    FoundReportCreate,
+    FoundReportResponse,
+    CatalogSearchRequest,
+    SearchResultResponse,
+)
 from backend.auth import get_current_user, get_current_admin
 from backend.embeddings import embedding_service
-from backend.matching import run_matching_for_lost_report, run_matching_for_found_report
+from backend.matching import (
+    run_matching_for_lost_report,
+    run_matching_for_found_report,
+    compute_cosine_similarity,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -284,3 +295,117 @@ async def upload_image(file: UploadFile = File(...)):
         buffer.write(content)
 
     return {"image_url": f"/uploads/{unique_filename}"}
+
+
+# ── Multi-Modal Catalog Search ───────────────────
+
+@router.post("/search", response_model=List[SearchResultResponse])
+def search_found_catalog(
+    search_req: CatalogSearchRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Multi-modal semantic search on approved found items catalog.
+    Supports natural language text embeddings and visual OpenCLIP similarity.
+    """
+    query = db.query(FoundReport).filter(FoundReport.status == "AT_SECURITY_DESK")
+    if search_req.category:
+        query = query.filter(FoundReport.category == search_req.category)
+    if search_req.location:
+        query = query.filter(FoundReport.location_found.ilike(f"%{search_req.location}%"))
+
+    items = query.all()
+    if not items:
+        return []
+
+    has_text_query = bool(search_req.query and search_req.query.strip())
+    has_image_query = bool(search_req.image_path and search_req.image_path.strip())
+
+    if not has_text_query and not has_image_query:
+        results = []
+        for item in sorted(items, key=lambda x: x.created_at, reverse=True):
+            data = SearchResultResponse.model_validate(item)
+            data.similarity_score = 1.0
+            data.match_type = "catalog"
+            submitter = db.query(User).filter(User.id == item.submitted_by).first()
+            if submitter:
+                data.submitted_by_name = submitter.name
+                data.submitted_by_college_id = submitter.college_id
+            results.append(data)
+        return results
+
+    # Generate query embeddings
+    query_text_vec = None
+    if has_text_query:
+        try:
+            query_text_vec = embedding_service.generate_text_embedding(search_req.query.strip())
+        except Exception as e:
+            logger.error(f"Error encoding search text query: {e}")
+
+    query_img_vec = None
+    if has_image_query:
+        try:
+            query_img_vec = embedding_service.generate_image_embedding(search_req.image_path.strip())
+        except Exception as e:
+            logger.error(f"Error encoding search image query: {e}")
+
+    min_score = search_req.min_score or 0.25
+    scored_results = []
+
+    for item in items:
+        text_sim = 0.0
+        img_sim = 0.0
+        match_type = "catalog"
+
+        if query_text_vec is not None:
+            if item.text_embedding is not None:
+                text_sim = compute_cosine_similarity(query_text_vec, item.text_embedding)
+            else:
+                item_text = embedding_service.build_item_text(
+                    item.item_name, item.category, item.description, location=item.location_found
+                )
+                item.text_embedding = embedding_service.generate_text_embedding(item_text)
+                db.commit()
+                text_sim = compute_cosine_similarity(query_text_vec, item.text_embedding)
+
+            # Keyword presence bonus (0.08) if terms appear directly in item_name or description
+            q_lower = search_req.query.lower()
+            if any(term in item.item_name.lower() or term in item.description.lower() for term in q_lower.split() if len(term) > 2):
+                text_sim = min(1.0, text_sim + 0.08)
+
+        if query_img_vec is not None and item.image_path:
+            if item.image_embedding is None:
+                item.image_embedding = embedding_service.generate_image_embedding(item.image_path)
+                db.commit()
+            if item.image_embedding is not None:
+                img_sim = compute_cosine_similarity(query_img_vec, item.image_embedding)
+
+        if has_text_query and has_image_query:
+            if img_sim > 0.0:
+                final_score = (text_sim * 0.55) + (img_sim * 0.45)
+                match_type = "hybrid"
+            else:
+                final_score = text_sim
+                match_type = "text"
+        elif has_image_query:
+            final_score = img_sim
+            match_type = "image"
+        else:
+            final_score = text_sim
+            match_type = "text"
+
+        if final_score >= min_score:
+            data = SearchResultResponse.model_validate(item)
+            data.similarity_score = round(final_score, 4)
+            data.match_type = match_type
+            submitter = db.query(User).filter(User.id == item.submitted_by).first()
+            if submitter:
+                data.submitted_by_name = submitter.name
+                data.submitted_by_college_id = submitter.college_id
+            scored_results.append((final_score, data))
+
+    # Sort descending by similarity score
+    scored_results.sort(key=lambda x: x[0], reverse=True)
+    return [r[1] for r in scored_results[:50]]
+

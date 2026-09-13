@@ -90,6 +90,19 @@ class FoundReportResponse(BaseModel):
         from_attributes = True
 
 
+class CatalogSearchRequest(BaseModel):
+    query: Optional[str] = None
+    image_path: Optional[str] = None
+    category: Optional[str] = None
+    location: Optional[str] = None
+    min_score: Optional[float] = 0.30
+
+
+class SearchResultResponse(FoundReportResponse):
+    similarity_score: Optional[float] = None
+    match_type: Optional[str] = None  # 'text' | 'image' | 'hybrid' | 'catalog'
+
+
 # ----- Match Schemas -----
 class MatchResponse(BaseModel):
     id: str

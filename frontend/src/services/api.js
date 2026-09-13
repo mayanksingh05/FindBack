@@ -45,6 +45,7 @@ export const reportService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })).data;
   },
+  searchCatalog: async (searchParams) => (await api.post('/reports/search', searchParams)).data,
 };
 
 export const matchService = {
