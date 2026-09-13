@@ -153,6 +153,8 @@ class ClaimResponse(BaseModel):
     found_report_number: Optional[str] = None
     category: Optional[str] = None
     location_found: Optional[str] = None
+    is_contested: Optional[bool] = False
+    contested_count: Optional[int] = 1
     class Config:
         from_attributes = True
 

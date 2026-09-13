@@ -398,6 +398,17 @@ def submit_claim(
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
 
+    active_claims_count = (
+        db.query(Claim)
+        .filter(Claim.student_id == current_user.id, Claim.status == "PENDING_VERIFICATION")
+        .count()
+    )
+    if active_claims_count >= 5:
+        raise HTTPException(
+            status_code=400,
+            detail="You already have 5 pending verification claims. Please visit the Security Desk to verify or resolve existing claims before submitting new ones."
+        )
+
     existing = db.query(Claim).filter(
         Claim.match_id == match_id, Claim.student_id == current_user.id
     ).first()
@@ -447,6 +458,13 @@ def list_claims(
         query = query.filter(Claim.student_id == current_user.id)
 
     claims = query.order_by(Claim.created_at.desc()).all()
+
+    # Calculate pending claims per found item to detect contested items
+    from collections import Counter
+    pending_counts = Counter(
+        c.found_report_id for c in claims if c.status == "PENDING_VERIFICATION"
+    )
+
     result = []
     for c in claims:
         student = db.query(User).filter(User.id == c.student_id).first()
@@ -456,7 +474,9 @@ def list_claims(
             .filter(Match.id == c.match_id)
             .first()
         )
-        result.append(_build_claim_response(c, student, match, db))
+        count = pending_counts.get(c.found_report_id, 1)
+        is_contested = (c.status == "PENDING_VERIFICATION" and count > 1)
+        result.append(_build_claim_response(c, student, match, db, is_contested=is_contested, contested_count=count))
     return result
 
 
@@ -467,7 +487,7 @@ def update_claim_status(
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Admin clicks Verified or Failed."""
+    """Admin clicks Verified or Failed. Automatically resolves competing and redundant claims."""
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
@@ -514,6 +534,61 @@ def update_claim_status(
         reference_type="CLAIM",
     ))
 
+    # AUTOMATION 1: Auto-reject other competing claims on the same found item
+    if update_in.status == "VERIFIED":
+        other_competing_claims = (
+            db.query(Claim)
+            .filter(
+                Claim.found_report_id == claim.found_report_id,
+                Claim.id != claim.id,
+                Claim.status == "PENDING_VERIFICATION",
+            )
+            .all()
+        )
+        for other in other_competing_claims:
+            other.status = "REJECTED_CONFLICT"
+            other.resolved_at = datetime.now(timezone.utc)
+            other.admin_id = admin_user.id
+            other.handover_notes = f"Item verified and handed over to confirmed owner under receipt #{claim.receipt_number}."
+            other_match = db.query(Match).filter(Match.id == other.match_id).first()
+            if other_match:
+                other_match.status = "REJECTED"
+            db.add(Notification(
+                user_id=other.student_id,
+                type="CLAIM_RESULT",
+                title="Claim Closed (Item Handed Over)",
+                message="Another student has physically verified ownership of this item at the Security Desk. Your verification request has been closed.",
+                reference_id=other.id,
+                reference_type="CLAIM",
+            ))
+
+        # AUTOMATION 2: Auto-resolve redundant claims submitted by the SAME student
+        same_student_other_claims = (
+            db.query(Claim)
+            .filter(
+                Claim.student_id == claim.student_id,
+                Claim.id != claim.id,
+                Claim.status == "PENDING_VERIFICATION",
+            )
+            .all()
+        )
+        for redundant in same_student_other_claims:
+            redundant.status = "AUTO_RESOLVED_OTHER_CLAIM"
+            redundant.resolved_at = datetime.now(timezone.utc)
+            redundant.admin_id = admin_user.id
+            redundant.handover_notes = f"Auto-closed: Owner recovered item under receipt #{claim.receipt_number}."
+            red_match = db.query(Match).filter(Match.id == redundant.match_id).first()
+            if red_match:
+                red_match.status = "RESOLVED"
+            db.add(Notification(
+                user_id=claim.student_id,
+                type="CLAIM_RESULT",
+                title="Redundant Claim Auto-Closed",
+                message=f"Your other pending claim #{redundant.id[:8]} was automatically closed because you already recovered your item under receipt #{claim.receipt_number}.",
+                reference_id=redundant.id,
+                reference_type="CLAIM",
+            ))
+
     db.commit()
     db.refresh(claim)
 
@@ -521,7 +596,7 @@ def update_claim_status(
     return _build_claim_response(claim, student, match, db)
 
 
-def _build_claim_response(claim, student, match, db) -> ClaimResponse:
+def _build_claim_response(claim, student, match, db, is_contested: bool = False, contested_count: int = 1) -> ClaimResponse:
     return ClaimResponse(
         id=claim.id,
         match_id=claim.match_id,
@@ -546,4 +621,6 @@ def _build_claim_response(claim, student, match, db) -> ClaimResponse:
         found_report_number=match.found_report.report_number if match and match.found_report else None,
         category=match.found_report.category if match and match.found_report else None,
         location_found=match.found_report.location_found if match and match.found_report else None,
+        is_contested=is_contested,
+        contested_count=contested_count,
     )

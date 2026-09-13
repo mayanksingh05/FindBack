@@ -65,6 +65,7 @@ export default function StudentDashboard({ onOpenReport }) {
       'ACTIVE': 'badge-rose', 'MATCHED': 'badge-amber', 'RESOLVED': 'badge-emerald',
       'PENDING_APPROVAL': 'badge-amber', 'AT_SECURITY_DESK': 'badge-blue', 'RETURNED_TO_OWNER': 'badge-emerald',
       'PENDING_VERIFICATION': 'badge-amber', 'VERIFIED': 'badge-emerald', 'FAILED': 'badge-rose',
+      'REJECTED_CONFLICT': 'badge-rose', 'AUTO_RESOLVED_OTHER_CLAIM': 'badge-slate',
     };
     const label = {
       'PENDING_APPROVAL': 'Awaiting Admin Approval',
@@ -73,6 +74,8 @@ export default function StudentDashboard({ onOpenReport }) {
       'PENDING_VERIFICATION': 'Pending Verification',
       'VERIFIED': 'Verified & Collected',
       'FAILED': 'Verification Failed',
+      'REJECTED_CONFLICT': 'Handed to Other Verified Owner',
+      'AUTO_RESOLVED_OTHER_CLAIM': 'Auto-Resolved (Item Received)',
     };
     return <span className={`badge ${map[s] || 'badge-slate'}`}>{label[s] || s}</span>;
   };

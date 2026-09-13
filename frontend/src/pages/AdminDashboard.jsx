@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { reportService, matchService } from '../services/api';
 import ReceiptModal from '../components/ReceiptModal';
-import { Shield, Package, CheckCircle2, XCircle, PlusCircle, UserCheck, Clock, Inbox, Image as ImageIcon, Phone, ShieldCheck, FileCheck } from 'lucide-react';
+import ContestedClaimsModal from '../components/ContestedClaimsModal';
+import { Shield, Package, CheckCircle2, XCircle, PlusCircle, UserCheck, Clock, Inbox, Image as ImageIcon, Phone, ShieldCheck, FileCheck, AlertTriangle } from 'lucide-react';
 
 export default function AdminDashboard({ onOpenReport }) {
   const [activeTab, setActiveTab] = useState('verification');
@@ -9,6 +10,7 @@ export default function AdminDashboard({ onOpenReport }) {
   const [foundReports, setFoundReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedReceiptClaim, setSelectedReceiptClaim] = useState(null);
+  const [contestedModalData, setContestedModalData] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -53,8 +55,26 @@ export default function AdminDashboard({ onOpenReport }) {
   const approvedFound = foundReports.filter(r => r.status !== 'PENDING_APPROVAL');
 
   const statusBadge = (s) => {
-    const map = { 'PENDING_APPROVAL': 'badge-amber', 'AT_SECURITY_DESK': 'badge-blue', 'RETURNED_TO_OWNER': 'badge-emerald', 'PENDING_VERIFICATION': 'badge-amber', 'VERIFIED': 'badge-emerald', 'FAILED': 'badge-rose' };
-    const label = { 'PENDING_APPROVAL': 'Pending Approval', 'AT_SECURITY_DESK': 'At Security Desk', 'RETURNED_TO_OWNER': 'Returned', 'PENDING_VERIFICATION': 'Awaiting Visit', 'VERIFIED': 'Verified', 'FAILED': 'Failed' };
+    const map = {
+      'PENDING_APPROVAL': 'badge-amber',
+      'AT_SECURITY_DESK': 'badge-blue',
+      'RETURNED_TO_OWNER': 'badge-emerald',
+      'PENDING_VERIFICATION': 'badge-amber',
+      'VERIFIED': 'badge-emerald',
+      'FAILED': 'badge-rose',
+      'REJECTED_CONFLICT': 'badge-rose',
+      'AUTO_RESOLVED_OTHER_CLAIM': 'badge-slate',
+    };
+    const label = {
+      'PENDING_APPROVAL': 'Pending Approval',
+      'AT_SECURITY_DESK': 'At Security Desk',
+      'RETURNED_TO_OWNER': 'Returned',
+      'PENDING_VERIFICATION': 'Awaiting Visit',
+      'VERIFIED': 'Verified',
+      'FAILED': 'Failed',
+      'REJECTED_CONFLICT': 'Conflict Rejected',
+      'AUTO_RESOLVED_OTHER_CLAIM': 'Auto-Resolved',
+    };
     return <span className={`badge ${map[s] || 'badge-slate'}`}>{label[s] || s}</span>;
   };
 
@@ -130,6 +150,11 @@ export default function AdminDashboard({ onOpenReport }) {
                                 <Phone size={13} /> {c.student_phone}
                               </span>
                             )}
+                            {c.is_contested && (
+                              <span className="badge badge-rose" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <AlertTriangle size={12} /> Contested Item ({c.contested_count} Claims)
+                              </span>
+                            )}
                             {c.combined_score && <div className="ai-score-pill" style={{ marginLeft: '0.5rem' }}><span className="score-number">{Math.round(c.combined_score * 100)}%</span> match</div>}
                           </div>
                           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
@@ -182,7 +207,16 @@ export default function AdminDashboard({ onOpenReport }) {
                             </div>
                           )}
                         </div>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'center' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignSelf: 'center', flexWrap: 'wrap' }}>
+                          {c.is_contested && (
+                            <button
+                              onClick={() => setContestedModalData({ foundReportId: c.found_report_id, itemName: c.item_name })}
+                              className="btn btn-sm btn-outline"
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', color: '#b45309', borderColor: '#fde68a', backgroundColor: '#fffbeb' }}
+                            >
+                              <AlertTriangle size={13} /> Compare {c.contested_count} Claimants
+                            </button>
+                          )}
                           <button onClick={() => handleClaimAction(c.id, 'VERIFIED')} className="btn btn-success btn-sm">
                             <CheckCircle2 size={14} /> Verified
                           </button>
@@ -305,6 +339,19 @@ export default function AdminDashboard({ onOpenReport }) {
         <ReceiptModal
           claim={selectedReceiptClaim}
           onClose={() => setSelectedReceiptClaim(null)}
+        />
+      )}
+
+      {contestedModalData && (
+        <ContestedClaimsModal
+          foundReportId={contestedModalData.foundReportId}
+          itemName={contestedModalData.itemName}
+          claims={claims}
+          onClose={() => setContestedModalData(null)}
+          onVerifyClaim={(claimId) => {
+            setContestedModalData(null);
+            handleClaimAction(claimId, 'VERIFIED');
+          }}
         />
       )}
     </div>
