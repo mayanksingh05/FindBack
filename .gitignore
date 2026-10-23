@@ -92,3 +92,4 @@ htmlcov/
 *.tmp
 *.temp
 implementation_plan*.md
+documentation/
