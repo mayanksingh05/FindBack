@@ -2,6 +2,7 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api',
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -23,9 +24,9 @@ api.interceptors.response.use(
 );
 
 export const authService = {
-  login: async (creds) => (await api.post('/auth/login', creds)).data,
-  register: async (data) => (await api.post('/auth/register', data)).data,
-  getMe: async () => (await api.get('/auth/me')).data,
+  login: async (creds) => (await api.post('/auth/login', creds, { timeout: 8000 })).data,
+  register: async (data) => (await api.post('/auth/register', data, { timeout: 8000 })).data,
+  getMe: async () => (await api.get('/auth/me', { timeout: 8000 })).data,
 };
 
 export const reportService = {
@@ -42,7 +43,7 @@ export const reportService = {
     const formData = new FormData();
     formData.append('file', file);
     return (await api.post('/reports/upload-image', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     })).data;
   },
   searchCatalog: async (searchParams) => (await api.post('/reports/search', searchParams)).data,

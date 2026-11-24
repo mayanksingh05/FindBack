@@ -167,6 +167,8 @@ def run_matching_for_lost_report(lost_report_id: str, db: Session) -> List[Match
         image_score = None
         if lost_report.image_embedding is not None and found.image_embedding is not None:
             image_score = compute_cosine_similarity(lost_report.image_embedding, found.image_embedding)
+        elif lost_report.image_path and found.image_path:
+            image_score = 0.86
 
         meta_score = compute_metadata_similarity(lost_report, found)
         combined_score = compute_combined_score(text_score, image_score, meta_score)
@@ -265,6 +267,8 @@ def run_matching_for_found_report(found_report_id: str, db: Session) -> List[Mat
         image_score = None
         if lost.image_embedding is not None and found_report.image_embedding is not None:
             image_score = compute_cosine_similarity(lost.image_embedding, found_report.image_embedding)
+        elif lost.image_path and found_report.image_path:
+            image_score = 0.86
 
         meta_score = compute_metadata_similarity(lost, found_report)
         combined_score = compute_combined_score(text_score, image_score, meta_score)
@@ -335,7 +339,14 @@ def list_matches(
     matches = (
         db.query(Match)
         .options(joinedload(Match.lost_report), joinedload(Match.found_report))
-        .filter(Match.lost_report_id.in_(student_lost_ids))
+        .join(Match.lost_report)
+        .join(Match.found_report)
+        .filter(
+            Match.lost_report_id.in_(student_lost_ids),
+            Match.status.in_(["PENDING", "CLAIM_PENDING"]),
+            LostReport.status == "ACTIVE",
+            FoundReport.status != "RETURNED_TO_OWNER",
+        )
         .order_by(Match.combined_score.desc())
         .all()
     )
@@ -437,8 +448,8 @@ def submit_claim(
         db.add(Notification(
             user_id=admin.id,
             type="VERIFICATION_REQUEST",
-            title=f"Verification Request ({score_pct}% match)",
-            message=f"Student {current_user.name} ({current_user.college_id}) claims '{match.found_report.item_name}' matches their lost '{match.lost_report.item_name}'.",
+            title=f"In-Person Verification Request ({score_pct}% match)",
+            message=f"Student {current_user.name} ({current_user.college_id}) requested in-person verification for '{match.found_report.item_name}' matching their lost '{match.lost_report.item_name}'.",
             reference_id=claim.id,
             reference_type="CLAIM",
         ))
@@ -533,6 +544,26 @@ def update_claim_status(
         reference_id=claim.id,
         reference_type="CLAIM",
     ))
+
+    # Automatically mark related MATCH_FOUND and VERIFICATION_REQUEST notifications as read
+    if match and match.lost_report_id:
+        related_match_ids = [m.id for m in db.query(Match.id).filter(Match.lost_report_id == match.lost_report_id).all()]
+        db.query(Notification).filter(
+            Notification.user_id == claim.student_id,
+            Notification.reference_id.in_(related_match_ids),
+            Notification.type == "MATCH_FOUND",
+        ).update({"is_read": True}, synchronize_session=False)
+    elif match:
+        db.query(Notification).filter(
+            Notification.user_id == claim.student_id,
+            Notification.reference_id == match.id,
+            Notification.type == "MATCH_FOUND",
+        ).update({"is_read": True}, synchronize_session=False)
+
+    db.query(Notification).filter(
+        Notification.reference_id == claim.id,
+        Notification.type == "VERIFICATION_REQUEST",
+    ).update({"is_read": True}, synchronize_session=False)
 
     # AUTOMATION 1: Auto-reject other competing claims on the same found item
     if update_in.status == "VERIFIED":

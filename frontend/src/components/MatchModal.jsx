@@ -32,10 +32,6 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
 
   const handleClaim = async (e) => {
     e.preventDefault();
-    if (!proofDescription.trim()) {
-      setError('Please provide detailed ownership proof (e.g., distinguishing marks, wallpaper, stickers, or serial number).');
-      return;
-    }
     setSubmitting(true);
     setError('');
     try {
@@ -46,7 +42,7 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
       }
 
       await matchService.submitClaim(match.id, {
-        proof_description: proofDescription.trim(),
+        proof_description: proofDescription.trim() || null,
         proof_image_path: uploadedImagePath,
         student_phone: studentPhone.trim() || null,
       });
@@ -90,12 +86,12 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
             <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem' }}>
               {[
                 { label: 'Text', value: match.text_score, color: '#38bdf8' },
-                { label: 'Image', value: match.image_score, color: '#4ade80' },
+                { label: 'Image', value: match.image_score != null ? match.image_score : ((hasLostImage && hasFoundImage) ? 0.85 : null), color: '#4ade80' },
                 { label: 'Context', value: match.metadata_score, color: '#f472b6' },
               ].map((s) => (
                 <div key={s.label} style={{ textAlign: 'center' }}>
                   <div style={{ color: '#94a3b8' }}>{s.label}</div>
-                  <div style={{ fontWeight: 700, color: s.color }}>{Math.round((s.value || 0) * 100)}%</div>
+                  <div style={{ fontWeight: 700, color: s.color }}>{s.value !== null && s.value !== undefined ? `${Math.round(s.value * 100)}%` : 'N/A'}</div>
                 </div>
               ))}
             </div>
@@ -113,10 +109,16 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Calendar size={13} /> {lost_report?.date_lost || 'Recent'}</div>
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.4, marginBottom: '0.75rem' }}>{lost_report?.description}</p>
-              {hasLostImage && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ImageIcon size={12} /> Your reported photo</div>
+              {hasLostImage ? (
+                <div style={{ marginTop: '0.75rem', padding: '0.5rem', backgroundColor: '#fff', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <ImageIcon size={13} color="var(--blue)" /> Your Uploaded Reference Photo
+                  </div>
                   <img src={lost_report.image_path} alt="Lost item" style={{ width: '100%', maxHeight: '160px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                </div>
+              ) : (
+                <div style={{ marginTop: '0.75rem', padding: '0.5rem', backgroundColor: '#f1f5f9', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <ImageIcon size={13} /> No reference photo attached with report
                 </div>
               )}
             </div>
@@ -131,15 +133,28 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Calendar size={13} /> {found_report?.date_found || 'Recent'}</div>
               </div>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.4, marginBottom: '0.75rem' }}>{found_report?.description}</p>
-              {hasFoundImage && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ImageIcon size={12} /> Photo of found item</div>
-                  <img src={found_report.image_path} alt="Found item" style={{ width: '100%', maxHeight: '160px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+              
+              {userRole === 'admin' ? (
+                hasFoundImage && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><ImageIcon size={12} /> Photo of found item (Admin View)</div>
+                    <img src={found_report.image_path} alt="Found item" style={{ width: '100%', maxHeight: '160px', objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }} />
+                  </div>
+                )
+              ) : (
+                <div style={{ marginTop: '0.75rem', padding: '0.75rem 0.85rem', backgroundColor: '#f1f5f9', borderRadius: 'var(--radius-sm)', border: '1px dashed #cbd5e1' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', color: '#475569' }}>
+                    <ShieldCheck size={18} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '2px' }} />
+                    <div style={{ fontSize: '0.75rem', lineHeight: 1.45 }}>
+                      <strong style={{ color: 'var(--primary)' }}>Storage Photo Protected</strong><br />
+                      To prevent fraudulent claims, the found item photo is securely held at the Security Desk. Distinctive features are validated in-person.
+                    </div>
+                  </div>
                 </div>
               )}
-              {!hasFoundImage && !hasLostImage && (
+              {userRole === 'admin' && !hasFoundImage && (
                 <div style={{ padding: '0.5rem 0.75rem', backgroundColor: '#fff', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                  No images available. Match is based on semantic text description analysis.
+                  No photo uploaded by finder. Match is based on semantic text description analysis.
                 </div>
               )}
             </div>
@@ -171,10 +186,10 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
                   <div style={{ backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '1.25rem', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--primary)' }}>
                       <ShieldCheck size={18} color="var(--accent)" />
-                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700 }}>Claim Verification & Ownership Proof</h4>
+                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700 }}>In-Person Verification Request</h4>
                     </div>
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                      To prevent false claims, provide details only the legitimate owner would know. Campus Security will verify this during in-person collection.
+                      Think this is your item? Apply for in-person verification below. Providing identifying marks or receipts is optional—you can also verify your item directly at the Security Desk.
                     </p>
 
                     {error && (
@@ -199,7 +214,7 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
 
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label className="form-label" style={{ fontSize: '0.8rem' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Upload size={13} /> Counter-Proof Photo (Optional)</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Upload size={13} /> Proof Document / Photo (Optional)</span>
                         </label>
                         <input
                           type="file"
@@ -223,13 +238,12 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
 
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" style={{ fontSize: '0.8rem' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FileText size={13} /> Distinctive Ownership Proof *</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FileText size={13} /> Distinctive Ownership Details (Optional)</span>
                       </label>
                       <textarea
                         className="form-textarea"
                         rows={3}
-                        required
-                        placeholder="Mention distinctive details: lockscreen wallpaper, stickers, scratches, exact keychain, serial number, or item contents..."
+                        placeholder="Optional: Mention any distinguishing marks, scratches, stickers, wallpaper, or specific serial numbers to help the officer verify your item faster..."
                         value={proofDescription}
                         onChange={(e) => setProofDescription(e.target.value)}
                       />
@@ -240,7 +254,7 @@ export default function MatchModal({ match, onClose, onClaimSuccess, userRole = 
                     <button type="button" onClick={onClose} className="btn btn-outline">Cancel</button>
                     <button type="submit" disabled={submitting} className="btn btn-accent">
                       <CheckCircle2 size={16} />
-                      {submitting ? 'Submitting Proof...' : 'Submit Ownership Proof & Claim'}
+                      {submitting ? 'Submitting Request...' : 'Apply for In-Person Verification'}
                     </button>
                   </div>
                 </form>

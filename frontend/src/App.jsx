@@ -11,7 +11,18 @@ import BrowseCatalog from './pages/BrowseCatalog';
 function ProtectedRoute({ children, requiredRole }) {
   const { user, loading } = useAuth();
 
-  if (loading) {
+  // Read latest stored user from localStorage to prevent React state sync race conditions on navigation
+  const storedUser = (() => {
+    try {
+      const raw = localStorage.getItem('findback_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const effectiveUser = user || storedUser;
+
+  if (loading && !effectiveUser) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--text-muted)' }}>
         Authenticating FindBack session...
@@ -19,12 +30,12 @@ function ProtectedRoute({ children, requiredRole }) {
     );
   }
 
-  if (!user) {
+  if (!effectiveUser) {
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && user.role !== requiredRole) {
-    return <Navigate to={user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard'} replace />;
+  if (requiredRole && effectiveUser.role !== requiredRole) {
+    return <Navigate to={effectiveUser.role === 'admin' ? '/admin/dashboard' : '/student/dashboard'} replace />;
   }
 
   return children;

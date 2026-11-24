@@ -17,12 +17,26 @@ from backend.analytics import router as analytics_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize DB tables & seed demo data on startup
+    # Initialize DB tables & seed demo data on startup with retry
+    import time
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            seed_database()
+            break
+        except Exception as e:
+            print(f"Startup DB init/seed attempt {attempt}/5: {e}")
+            if attempt < 5:
+                time.sleep(2)
+
+    # Pre-warm AI embedding models so user requests respond in milliseconds
     try:
-        init_db()
-        seed_database()
+        from backend.embeddings import embedding_service
+        embedding_service.get_text_model()
+        embedding_service.get_clip_model()
     except Exception as e:
-        print(f"Startup DB init/seed warning: {e}")
+        print(f"Embedding models pre-warm notice: {e}")
+
     yield
 
 

@@ -13,12 +13,18 @@ export default function Login() {
 
   const quickLogin = async (email, password) => {
     setError('');
+    setFormData((prev) => ({ ...prev, email, password }));
     setLoading(true);
     try {
       const user = await login(email, password);
-      navigate(user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard');
+      const target = user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard';
+      navigate(target, { replace: true });
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed');
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout') || err.message?.includes('Network Error') || !err.response) {
+        setError('Cannot connect to backend server. Make sure run.bat is kept open.');
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Login failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -37,7 +43,11 @@ export default function Login() {
         navigate('/student/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Authentication failed');
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout') || err.message?.includes('Network Error') || !err.response) {
+        setError('Cannot connect to backend server. Make sure run.bat is kept open.');
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Authentication failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -66,7 +76,7 @@ export default function Login() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#fbbf24', fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.85rem' }}>
                 <Sparkles size={16} /> Quick Demo Login
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {[
                   { label: 'Student — Aarav Sharma', sub: '0012026 · Has AI match for headphones', email: 'student1@college.edu', pw: 'Student@123', icon: <GraduationCap size={16} color="#38bdf8" />, color: '#38bdf8' },
                   { label: 'Student — Priya Patel', sub: '0022026 · Has match for calculator', email: 'student2@college.edu', pw: 'Student@123', icon: <GraduationCap size={16} color="#4ade80" />, color: '#4ade80' },
@@ -74,10 +84,14 @@ export default function Login() {
                   { label: 'Campus Admin', sub: 'Approve items, verify claims', email: 'admin@college.edu', pw: 'Admin@123', icon: <Shield size={16} color="#fbbf24" />, color: '#fbbf24' },
                 ].map((d) => (
                   <button key={d.email} type="button" onClick={() => quickLogin(d.email, d.pw)} disabled={loading}
-                    className="demo-pill-btn" style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    className="demo-pill-btn" style={{ backgroundColor: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', padding: '0.6rem 0.8rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textAlign: 'left' }}>
                       {d.icon}
-                      <div><div>{d.label}</div><div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{d.sub}</div></div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{d.label}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{d.sub}</div>
+                        <div style={{ fontSize: '0.65rem', color: '#cbd5e1', opacity: 0.85, marginTop: '2px', fontFamily: 'monospace' }}>{d.email} · {d.pw}</div>
+                      </div>
                     </div>
                     <ArrowRight size={14} color={d.color} />
                   </button>

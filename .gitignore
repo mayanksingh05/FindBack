@@ -93,3 +93,6 @@ htmlcov/
 *.temp
 implementation_plan*.md
 documentation/
+final/
+study/
+scratch/

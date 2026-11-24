@@ -55,11 +55,24 @@ def seed_database():
             )
             db.add(student3)
 
+        # 4th student: reserved for manual testing (clean dashboard, no quick-login)
+        student_manual = db.query(User).filter(User.email == "teststudent@college.edu").first()
+        if not student_manual:
+            student_manual = User(
+                college_id="0042026",
+                name="Aditya Kumar",
+                email="teststudent@college.edu",
+                password_hash=hash_password("Student@123"),
+                role="student",
+            )
+            db.add(student_manual)
+
         db.commit()
         db.refresh(admin)
         db.refresh(student1)
         db.refresh(student2)
         db.refresh(student3)
+        db.refresh(student_manual)
 
         # ── 2. Lost Reports ────────────────────────────────
         today = date.today()
@@ -77,7 +90,7 @@ def seed_database():
                 location="Central Library 2nd Floor",
                 date_lost=yesterday,
                 distinguishing_info="Small scratch on left ear cup near volume buttons. White sticker residue on inner headband.",
-                image_path=None,
+                image_path="/uploads/sample_headphones.webp",
                 status="ACTIVE",
             )
             db.add(lost1)
@@ -93,7 +106,7 @@ def seed_database():
                 location="Electronics Lab 3 (Block B)",
                 date_lost=two_days_ago,
                 distinguishing_info="Orange handwritten formula sticker inside the slide cover.",
-                image_path=None,
+                image_path="/uploads/sample_calculator.webp",
                 status="ACTIVE",
             )
             db.add(lost2)
@@ -109,7 +122,7 @@ def seed_database():
                 location="Cafeteria Outdoor Seating",
                 date_lost=yesterday,
                 distinguishing_info="Dent on the lower steel rim.",
-                image_path=None,
+                image_path="/uploads/sample_test_bottle.webp",
                 status="ACTIVE",
             )
             db.add(lost3)
@@ -131,7 +144,7 @@ def seed_database():
                 description="Blue wireless over-ear headset with black padded ear cushions. Found on reading table.",
                 location_found="Central Library 2nd Floor, Table 4",
                 date_found=yesterday,
-                image_path=None,
+                image_path="/uploads/sample_headphones.webp",
                 status="AT_SECURITY_DESK",
                 approved_by=admin.id,
                 approved_at=datetime.now(timezone.utc),
@@ -148,7 +161,7 @@ def seed_database():
                 description="Black Casio scientific calculator with protective cover. Found at workbench 7 after lab session.",
                 location_found="Electronics Lab 3, Workbench 7",
                 date_found=two_days_ago,
-                image_path=None,
+                image_path="/uploads/sample_calculator.webp",
                 status="AT_SECURITY_DESK",
                 approved_by=admin.id,
                 approved_at=datetime.now(timezone.utc),
@@ -165,7 +178,7 @@ def seed_database():
                 description="Compact 3-fold dark navy blue umbrella with push-button automatic open.",
                 location_found="Main Auditorium Foyer",
                 date_found=today,
-                image_path=None,
+                image_path="/uploads/folding_umbrella.webp",
                 status="AT_SECURITY_DESK",
                 approved_by=admin.id,
                 approved_at=datetime.now(timezone.utc),
@@ -183,8 +196,10 @@ def seed_database():
                 description="Black 1L insulated thermos with red grip strap. Found on cafeteria lunch table after 2pm.",
                 location_found="Cafeteria Table 12",
                 date_found=yesterday,
-                image_path=None,
-                status="PENDING_APPROVAL",
+                image_path="/uploads/sample_test_bottle.webp",
+                status="AT_SECURITY_DESK",
+                approved_by=admin.id,
+                approved_at=datetime.now(timezone.utc),
             )
             db.add(found4)
 
@@ -215,19 +230,11 @@ def seed_database():
         # ── 4. Compute AI Matches ────────────────────────────────
         run_matching_for_lost_report(lost1.id, db)
         run_matching_for_lost_report(lost2.id, db)
+        run_matching_for_lost_report(lost3.id, db)
 
         # ── 5. Notifications ────────────────────────────────
-        notif1 = db.query(Notification).filter(
-            Notification.user_id == student1.id, Notification.type == "MATCH_FOUND"
-        ).first()
-        if not notif1:
-            db.add(Notification(
-                user_id=student1.id,
-                type="MATCH_FOUND",
-                title="Potential Match Found (88%)",
-                message="An item matching your 'Boat Rockerz 450 Headphones' was found at Central Library. Review the match and submit a verification request.",
-                reference_type="MATCH",
-            ))
+        # Note: run_matching_for_lost_report above already creates real MATCH_FOUND
+        # notifications for student1's lost items with exact reference_id links.
 
         notif2 = db.query(Notification).filter(
             Notification.user_id == student2.id, Notification.type == "MATCH_FOUND"

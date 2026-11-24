@@ -75,7 +75,19 @@ export default function ReportModal({ type = 'lost', isOpen, onClose, onSuccess 
       onSuccess();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to submit report.');
+      console.error('Submit report error:', err);
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Submission timed out while AI was processing. Please try again.');
+      } else {
+        const detail = err.response?.data?.detail;
+        if (typeof detail === 'string') {
+          setError(detail);
+        } else if (Array.isArray(detail)) {
+          setError(detail.map(d => d.msg || JSON.stringify(d)).join(', '));
+        } else {
+          setError(err.message || 'Failed to submit report.');
+        }
+      }
     } finally {
       setLoading(false);
       setUploading(false);

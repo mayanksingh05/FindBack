@@ -39,9 +39,15 @@ export default function Navbar({ onOpenReport }) {
     loadNotifications();
     const interval = setInterval(() => {
       loadNotifications(false);
-    }, 12000);
+    }, 4000);
 
-    return () => clearInterval(interval);
+    const handleFocus = () => loadNotifications(false);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [user]);
 
   const loadNotifications = async (initial = isInitialLoad.current) => {
@@ -367,7 +373,8 @@ export default function Navbar({ onOpenReport }) {
                               <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.45rem' }}>
                                 {isMatch && (
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      handleMarkOneRead(e, n.id);
                                       setShowNotifs(false);
                                       navigate('/student/dashboard');
                                     }}
@@ -390,7 +397,8 @@ export default function Navbar({ onOpenReport }) {
 
                                 {isClaim && (
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      handleMarkOneRead(e, n.id);
                                       setShowNotifs(false);
                                       navigate(user.role === 'admin' ? '/admin/dashboard' : '/student/dashboard');
                                     }}

@@ -5,6 +5,11 @@ and OpenCLIP (ViT-B-32, 512 dims) for images.
 import os
 import logging
 from typing import Optional, List
+
+# Prevent huggingface / transformers from attempting slow online network retries
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 from PIL import Image
 import torch
 
@@ -92,16 +97,16 @@ class EmbeddingService:
         if not image_path:
             return None
 
-        # Resolve path
+        # Resolve path - handles both relative paths and web URLs like /uploads/photo.jpg
         resolved_path = image_path
-        if not os.path.isabs(resolved_path):
-            # Check relative to working directory or uploads folder
-            if os.path.exists(resolved_path):
-                pass
-            elif os.path.exists(os.path.join(settings.UPLOAD_DIR, os.path.basename(resolved_path))):
-                resolved_path = os.path.join(settings.UPLOAD_DIR, os.path.basename(resolved_path))
-            elif os.path.exists(os.path.join(".", resolved_path.lstrip("/\\"))):
-                resolved_path = os.path.join(".", resolved_path.lstrip("/\\"))
+        if not os.path.exists(resolved_path):
+            filename = os.path.basename(resolved_path)
+            candidate_upload = os.path.join(settings.UPLOAD_DIR, filename)
+            candidate_relative = os.path.join(".", resolved_path.lstrip("/\\"))
+            if os.path.exists(candidate_upload):
+                resolved_path = candidate_upload
+            elif os.path.exists(candidate_relative):
+                resolved_path = candidate_relative
 
         if not os.path.exists(resolved_path):
             logger.warning(f"Image path does not exist for embedding: {image_path} (resolved: {resolved_path})")

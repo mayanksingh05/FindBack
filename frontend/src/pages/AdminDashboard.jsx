@@ -14,10 +14,22 @@ export default function AdminDashboard({ onOpenReport }) {
   const [selectedReceiptClaim, setSelectedReceiptClaim] = useState(null);
   const [contestedModalData, setContestedModalData] = useState(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+    loadData(true); 
+    const interval = setInterval(() => {
+      loadData(false);
+    }, 4000);
 
-  const loadData = async () => {
-    setLoading(true);
+    const handleFocus = () => loadData(false);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  const loadData = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     try {
       const [c, f, a] = await Promise.all([
         matchService.getClaims(),
@@ -31,7 +43,7 @@ export default function AdminDashboard({ onOpenReport }) {
       setFoundReports(f);
       if (a) setAnalyticsData(a);
     } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    finally { if (showSpinner) setLoading(false); }
   };
 
   const handleClaimAction = async (claimId, newStatus) => {

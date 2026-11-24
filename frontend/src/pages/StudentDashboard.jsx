@@ -17,10 +17,22 @@ export default function StudentDashboard({ onOpenReport }) {
   const [loading, setLoading] = useState(true);
   const [scanningReportId, setScanningReportId] = useState(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+    loadData(true); 
+    const interval = setInterval(() => {
+      loadData(false);
+    }, 4000);
 
-  const loadData = async () => {
-    setLoading(true);
+    const handleFocus = () => loadData(false);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
+  const loadData = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     try {
       const [lost, found, m, c] = await Promise.all([
         reportService.getLostReports(true),
@@ -33,7 +45,7 @@ export default function StudentDashboard({ onOpenReport }) {
       setMatches(m);
       setClaims(c);
     } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    finally { if (showSpinner) setLoading(false); }
   };
 
   const handleScanMatches = async (reportId) => {
@@ -118,7 +130,7 @@ export default function StudentDashboard({ onOpenReport }) {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto' }}>
         {tabs.map((t) => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)}
+          <button key={t.key} onClick={() => { setActiveTab(t.key); loadData(false); }}
             style={{ padding: '0.75rem 1rem', background: 'none', border: 'none', borderBottom: activeTab === t.key ? `3px solid ${t.accent || 'var(--primary)'}` : '3px solid transparent', marginBottom: '-2px', fontWeight: 700, fontSize: '0.9rem', color: activeTab === t.key ? (t.accent || 'var(--primary)') : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
             {t.icon} {t.label} ({t.count})
           </button>
@@ -150,6 +162,15 @@ export default function StudentDashboard({ onOpenReport }) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><MapPin size={13} /> {m.found_report?.location_found}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}><Clock size={13} /> For: #{m.lost_report?.report_number} ({m.lost_report?.item_name})</div>
                       </div>
+                      {m.lost_report?.image_path && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem', padding: '0.45rem 0.65rem', backgroundColor: '#f8fafc', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                          <img src={m.lost_report.image_path} alt={m.lost_report.item_name} style={{ width: 42, height: 42, objectFit: 'cover', borderRadius: '4px', flexShrink: 0, border: '1px solid #e2e8f0' }} />
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--primary)', display: 'block' }}>Your Reference Photo</span>
+                            Attached to report #{m.lost_report.report_number}
+                          </div>
+                        </div>
+                      )}
                       <div style={{ backgroundColor: 'var(--accent-subtle)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--accent-text)', lineHeight: 1.4, marginBottom: '1rem' }}>{m.explanation}</div>
                       <button onClick={() => setSelectedMatch(m)} className="btn btn-primary btn-sm" style={{ width: '100%' }}>
                         Inspect Match & Request Verification <ArrowRight size={14} />
